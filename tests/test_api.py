@@ -44,3 +44,20 @@ def test_query_validation_error_on_empty_string():
     response = client.post("/query", json=payload)
     assert response.status_code == 400
     assert "blank" in response.json()["detail"].lower()
+
+def test_query_returns_query_id():
+    payload = {"question": "How do path parameters work in FastAPI?"}
+    response = client.post("/query", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert "query_id" in data
+    assert data["query_id"].startswith("q_")
+    assert "answer" in data
+    assert "sources" in data
+
+def test_ingest_urls_returns_422_on_failure():
+    payload = {"urls": ["https://invalid-non-existent-domain-123456789xyz.com"]}
+    response = client.post("/ingest/urls", json=payload)
+    assert response.status_code == 422
+    assert "Failed to scrape" in response.json()["detail"]
+

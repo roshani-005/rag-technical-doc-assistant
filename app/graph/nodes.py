@@ -125,15 +125,14 @@ def document_grading_node(state: GraphState) -> Dict[str, Any]:
         try:
             res = llm.invoke([SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)])
             grade = _extract_json(res.content)
-            score = grade.get("score", "relevant").lower()
-            if "relevant" in score:
+            score = grade.get("score", "irrelevant").strip().lower()
+            if score == "relevant":
                 filtered_docs.append(doc)
                 logger.info(f"[Grader] Chunk {idx} ({doc.metadata.get('source')}) -> RELEVANT")
             else:
-                logger.info(f"[Grader] Chunk {idx} ({doc.metadata.get('source')}) -> IRRELEVANT ({grade.get('reason')})")
+                logger.info(f"[Grader] Chunk {idx} ({doc.metadata.get('source')}) -> IRRELEVANT ({grade.get('reason', 'Not relevant')})")
         except Exception as e:
-            logger.warning(f"[Grader] Fallback for chunk {idx}: {e}")
-            filtered_docs.append(doc)
+            logger.warning(f"[Grader] Error for chunk {idx}: {e}. Dropping chunk.")
             
     logger.info(f"[Grader Summary] {len(filtered_docs)}/{len(documents)} chunks deemed relevant.")
     return {
@@ -219,11 +218,15 @@ def generation_node(state: GraphState) -> Dict[str, Any]:
             f"or available web search to answer your question: '{question}'.\n\n"
             "Please check if the topic is covered in your indexed documents, or try rephrasing your question."
         )
+        current_history = list(state.get("chat_history") or [])
+        current_history.append({"role": "user", "content": question})
+        current_history.append({"role": "assistant", "content": fallback_msg})
         return {
             "generation": fallback_msg,
             "citations": [],
             "is_fallback": True,
-            "is_grounded": True
+            "is_grounded": True,
+            "chat_history": current_history
         }
         
     # Format context with explicit citation references
@@ -244,6 +247,13 @@ def generation_node(state: GraphState) -> Dict[str, Any]:
         
     context_str = "\n\n---\n\n".join(context_blocks)
     
+    hallucination_warning = ""
+    if state.get("hallucination_retry", 0) > 0 and not state.get("is_grounded", True):
+        hallucination_warning = (
+            "\n6. CRITICAL REGENERATION: The previous answer contained ungrounded claims. "
+            "Strictly restrict your answer to facts directly proven by the context excerpts."
+        )
+
     system_prompt = (
         "You are an elite AI technical documentation assistant.\n"
         "Your task is to provide a clear, accurate, and comprehensive answer to the user's question, "
@@ -253,7 +263,7 @@ def generation_node(state: GraphState) -> Dict[str, Any]:
         "2. If the context contains code snippets, provide complete, syntactically correct examples.\n"
         "3. In your response, explicitly reference source documents using citations like [Source: filename, Section: name].\n"
         "4. Structure the response logically (e.g., Explanation, Code Example, Key Takeaways).\n"
-        f"5. Tailor the tone to query type: {query_type}."
+        f"5. Tailor the tone to query type: {query_type}.{hallucination_warning}"
     )
     
     human_prompt = f"User Question: {question}\n\nDocumentation Context:\n{context_str}"
@@ -261,10 +271,15 @@ def generation_node(state: GraphState) -> Dict[str, Any]:
     llm = get_chat_model(temperature=0.1)
     response = llm.invoke([SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)])
     
+    current_history = list(state.get("chat_history") or [])
+    current_history.append({"role": "user", "content": question})
+    current_history.append({"role": "assistant", "content": response.content})
+
     return {
         "generation": response.content,
         "citations": citations,
-        "is_fallback": is_fallback
+        "is_fallback": is_fallback,
+        "chat_history": current_history
     }
 
 # -------------------------------------------------------------
@@ -277,9 +292,10 @@ def hallucination_check_node(state: GraphState) -> Dict[str, Any]:
     """
     generation = state.get("generation", "")
     docs = state.get("filtered_docs", [])
+    current_retry = state.get("hallucination_retry", 0)
     
     if not docs or state.get("is_fallback", False):
-        return {"is_grounded": True}
+        return {"is_grounded": True, "hallucination_retry": current_retry}
         
     context_text = "\n\n".join([d.page_content for d in docs])
     
@@ -296,8 +312,9 @@ def hallucination_check_node(state: GraphState) -> Dict[str, Any]:
         res = llm.invoke([SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)])
         parsed = _extract_json(res.content)
         grounded = parsed.get("grounded", "yes").lower() == "yes"
-        logger.info(f"[Hallucination Check] Grounded: {grounded}")
-        return {"is_grounded": grounded}
+        new_retry = current_retry + (1 if not grounded else 0)
+        logger.info(f"[Hallucination Check] Grounded: {grounded} | Retries: {new_retry}")
+        return {"is_grounded": grounded, "hallucination_retry": new_retry}
     except Exception as e:
         logger.warning(f"[Hallucination Check] Error: {e}. Assuming grounded.")
-        return {"is_grounded": True}
+        return {"is_grounded": True, "hallucination_retry": current_retry}

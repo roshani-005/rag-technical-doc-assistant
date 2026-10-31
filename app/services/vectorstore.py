@@ -80,11 +80,30 @@ def get_vectorstore() -> Chroma:
 def add_documents_to_store(docs: List[Document]) -> int:
     """
     Adds a list of Document objects to the Chroma vector store.
+    Uses deterministic chunk IDs with collection.upsert to prevent duplicate chunks on re-ingestion.
     """
     if not docs:
         return 0
     store = get_vectorstore()
-    store.add_documents(docs)
+    ids = [d.metadata.get("chunk_id") for d in docs]
+    
+    if all(ids):
+        try:
+            texts = [d.page_content for d in docs]
+            metadatas = [d.metadata for d in docs]
+            embeddings = store._embedding_function.embed_documents(texts)
+            store._collection.upsert(
+                ids=ids,
+                embeddings=embeddings,
+                documents=texts,
+                metadatas=metadatas
+            )
+        except Exception as e:
+            logger.warning(f"Chroma upsert fallback ({e}): using add_documents")
+            store.add_documents(docs, ids=ids)
+    else:
+        store.add_documents(docs)
+        
     # Chroma >= 0.4.x automatically persists to disk
     try:
         if hasattr(store, "persist"):

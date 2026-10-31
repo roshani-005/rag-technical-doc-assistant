@@ -128,7 +128,7 @@ with tab_chat:
                         sources = data.get("sources", [])
                         retries = data.get("retries_used", 0)
                         is_grounded = data.get("is_grounded", True)
-                        query_id = f"q_{uuid.uuid4().hex[:6]}"
+                        query_id = data.get("query_id") or f"q_{uuid.uuid4().hex[:6]}"
                         
                         st.markdown(answer)
                         

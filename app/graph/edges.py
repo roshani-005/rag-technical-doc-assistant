@@ -25,3 +25,19 @@ def decide_after_grading(state: GraphState) -> str:
         
     logger.info("[Edge Router] No relevant docs found and max retries reached -> routing to 'fallback'")
     return "fallback"
+
+def decide_after_hallucination(state: GraphState) -> str:
+    """
+    Evaluates groundedness after hallucination check:
+    If not grounded and hallucination_retry <= 1 -> route back to 'generate'.
+    Otherwise -> route to 'end'.
+    """
+    is_grounded = state.get("is_grounded", True)
+    hallucination_retry = state.get("hallucination_retry", 0)
+    
+    if not is_grounded and hallucination_retry <= 1:
+        logger.info(f"[Edge Router] Answer ungrounded (retry {hallucination_retry}/1). Routing back to 'generate'.")
+        return "generate"
+        
+    logger.info("[Edge Router] Answer grounded or max regeneration reached -> routing to 'end'")
+    return "end"

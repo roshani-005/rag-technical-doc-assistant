@@ -13,7 +13,7 @@ from app.graph.nodes import (
     generation_node,
     hallucination_check_node,
 )
-from app.graph.edges import decide_after_grading
+from app.graph.edges import decide_after_grading, decide_after_hallucination
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ def build_graph() -> StateGraph:
     Constructs and connects the self-corrective LangGraph StateGraph.
     Includes query analysis, vector retrieval, document grading,
     retry query reformulation loop, web search fallback, citation generation,
-    and hallucination verification.
+    and hallucination verification with single-retry regeneration.
     """
     workflow = StateGraph(GraphState)
     
@@ -61,7 +61,14 @@ def build_graph() -> StateGraph:
     
     # Groundedness / Hallucination verification
     workflow.add_edge("generate", "hallucination_check")
-    workflow.add_edge("hallucination_check", END)
+    workflow.add_conditional_edges(
+        "hallucination_check",
+        decide_after_hallucination,
+        {
+            "generate": "generate",
+            "end": END,
+        }
+    )
     
     return workflow
 
@@ -76,11 +83,15 @@ async def run_documentation_assistant(
     """
     Asynchronously invokes the LangGraph pipeline for a user question.
     Thread ID manages conversation history and session isolation.
+    Notice chat_history is NOT reset to [] in initial_state, allowing
+    MemorySaver to preserve conversation history across turns.
     """
     tid = thread_id or "default_session"
     config = {"configurable": {"thread_id": tid}}
     
-    initial_state: GraphState = {
+    # Notice: 'chat_history' is purposefully omitted from input_state
+    # so MemorySaver preserves multi-turn conversation memory across calls.
+    input_state = {
         "question": question,
         "query_type": "how-to",
         "transformed_query": question,
@@ -92,9 +103,8 @@ async def run_documentation_assistant(
         "max_retries": settings.MAX_RETRIES,
         "is_fallback": False,
         "is_grounded": True,
-        "chat_history": []
+        "hallucination_retry": 0,
     }
     
-    # Run graph execution
-    final_state = await compiled_app.ainvoke(initial_state, config=config)
+    final_state = await compiled_app.ainvoke(input_state, config=config)
     return final_state

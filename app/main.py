@@ -2,6 +2,7 @@ import os
 import json
 import uuid
 import logging
+import asyncio
 from typing import List, Optional
 from datetime import datetime
 from contextlib import asynccontextmanager
@@ -128,7 +129,9 @@ async def query_documentation(request: QueryRequest):
             for c in final_state.get("citations", [])
         ]
         
+        query_id = f"q_{uuid.uuid4().hex[:8]}"
         return QueryResponse(
+            query_id=query_id,
             question=request.question,
             query_type=final_state.get("query_type", "how-to"),
             answer=final_state.get("generation", "No answer generated."),
@@ -166,7 +169,7 @@ async def ingest_files(files: List[UploadFile] = File(...)):
         except Exception:
             content_str = str(content_bytes)
             
-        chunks_added = ingest_single_file(content_str, uploaded.filename or "uploaded_doc")
+        chunks_added = await asyncio.to_thread(ingest_single_file, content_str, uploaded.filename or "uploaded_doc")
         total_added += chunks_added
         indexed_names.append(uploaded.filename or "uploaded_doc")
         
@@ -182,7 +185,12 @@ async def ingest_web_urls(request: IngestURLRequest):
     """
     Scrape, chunk, and index remote documentation URLs into the vector store.
     """
-    res = ingest_urls(request.urls)
+    res = await asyncio.to_thread(ingest_urls, request.urls)
+    if not res.get("successful_urls"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Failed to scrape or parse any of the provided URLs. Failures: {res.get('failed_urls', [])}"
+        )
     return IngestResponse(
         status="success",
         message=f"Processed {len(request.urls)} URLs, indexed {res['total_chunks_added']} chunks.",

@@ -49,35 +49,43 @@ To eliminate these issues, this system implements a **Self-Corrective LangGraph 
                         │   (ChromaDB top-k)     │                  │
                         └───────────┬────────────┘                  │
                                     │                               │
-                                    ▼                               │ (Re-try)
+                                    ▼                               │ (Rewrite Query)
                         ┌────────────────────────┐                  │
                         │Node 3: Document Grading│                  │
                         │ (Filter Irrelevant)    │                  │
                         └───────────┬────────────┘                  │
                                     │                               │
-                      Is any chunk relevant?                        │
-                     /                      \                       │
-             YES    /                        \   NO                 │
-                   /                          \                     │
-                  ▼                            ▼                    │
-     ┌────────────────────────┐       Retries < Limit?              │
-     │   Node 4: Generation   │      /                \             │
-     │  - Strict Grounding    │     / YES              \ NO         │
-     │  - Inline Citations    │    ▼                    ▼           │
-     └────────────┬───────────┘ ┌───────────────┐ ┌───────────────┐ │
-                  │             │Query Rewriter │ │Web Fallback   │─┘
-                  ▼             │(Reformulate)  │ │(Tavily / DDG) │
-     ┌────────────────────────┐ └───────────────┘ └───────┬───────┘
-     │Bonus: Groundedness Chk │                           │
-     │(Self-RAG Verification) │                           │
-     └────────────┬───────────┘                           │
-                  │                                       ▼
-                  ▼                              ┌─────────────────┐
-             Final Answer                        │Generation Node  │
-           (with Citations)                      └────────┬────────┘
-                                                          │
-                                                          ▼
-                                                     Final Answer
+                       Is any chunk relevant?                       │
+                      /                      \                      │
+              YES    /                        \   NO                │
+                    /                          \                    │
+                   ▼                            ▼                   │
+                  │                      Retries < Limit?           │
+                  │                     /                \          │
+                  │                    / YES              \ NO      │
+                  │                   ▼                    ▼        │
+                  │            ┌───────────────┐   ┌──────────────┐ │
+                  │            │Query Rewriter │   │ Web Fallback │ │
+                  │            │(Reformulate)  │   │(Tavily / DDG)│ └───┘
+                  │            └───────────────┘   └──────┬───────┘
+                  │                                       │
+                  ▼                                       ▼
+      ┌────────────────────────────────────────────────────────┐
+      │                   Node 4: Generation                   │
+      │    - Context Synthesis (Local Docs or Web Fallback)    │
+      │    - Strict Inline Citations                           │
+      └───────────────────────────┬────────────────────────────┘
+                                  │
+                                  ▼
+      ┌────────────────────────────────────────────────────────┐
+      │         Node 5: Hallucination Verification             │
+      │         - Automated Self-RAG Groundedness Check        │
+      │         - Regulates regeneration if ungrounded         │
+      └───────────────────────────┬────────────────────────────┘
+                                  │
+                                  ▼
+                             Final Answer
+                        (Verified with Citations)
 ```
 
 ### State Schema (`GraphState`)
@@ -237,6 +245,7 @@ curl -X POST "http://localhost:8000/query" \
 **Response:**
 ```json
 {
+  "query_id": "q_7f8a9b1c",
   "question": "How do I declare optional query parameters with default values in FastAPI?",
   "query_type": "how-to",
   "answer": "In FastAPI, function parameters that are not part of the route path are automatically interpreted as query parameters. You can make them optional by providing a default value or typing them as Optional/str | None.\n\n```python\nfrom typing import Optional\nfrom fastapi import FastAPI\n\napp = FastAPI()\n\n@app.get(\"/items/\")\nasync def read_items(skip: int = 0, limit: int = 10, search: Optional[str] = None):\n    return {\"skip\": skip, \"limit\": limit, \"search\": search}\n```\n\n- When a client calls `/items/`, `skip` defaults to 0 and `limit` defaults to 10.\n- `search` is optional and defaults to `None`.\n\nCitations:\n- [Source: path_and_query_parameters.md | Section: Query Parameters]",
@@ -369,6 +378,23 @@ Tests cover:
    Set up continuous offline evaluation measuring **Context Precision**, **Context Recall**, and **Faithfulness** across a golden dataset of technical question-answer pairs.
 4. **Persistent Multi-User Memory:**
    Replace the in-memory `MemorySaver` with a persistent PostgreSQL or Redis checkpointer to scale state storage across distributed workers.
+
+---
+
+## 📋 System Assumptions
+
+During the architectural design and implementation of this assistant, the following assumptions were made:
+
+1. **Document Ingestion Formats & Structure:**
+   - The primary input format is Markdown (`.md`), which allows header-aware chunking (`#`, `##`, `###`) to preserve semantic section boundaries and code block integrity. Plain text (`.txt`) and HTML (`.html`) files are supported, with HTML stripped of markup tags and scripts via BeautifulSoup before chunking.
+2. **Deterministic & Idempotent Ingestion:**
+   - Document chunk IDs are generated deterministically using SHA-256 hashes of `f"{source_name}:{content.strip()}"`. Re-ingesting or updating documentation updates existing chunks in place rather than generating duplicate vectors.
+3. **Session & Memory Persistence:**
+   - Conversational memory is tracked per session using LangGraph's `MemorySaver` checkpointer keyed by `thread_id`. In a multi-instance production cluster, this can be swapped with `PostgresSaver` or Redis without changing node logic.
+4. **Deterministic Testing & Offline Execution:**
+   - When external LLM API keys are absent or during CI testing (`pytest`), the system automatically switches to `LLM_PROVIDER=mock`. This ensures all pipeline branches, retry loops, and API contracts can be verified reliably offline without external rate limits or network dependencies.
+5. **Bounded Self-Correction:**
+   - The retry loop is capped at `MAX_RETRIES=2` to ensure responsive SLA times and avoid circular search loops. If local documents do not satisfy the query, the assistant transitions to external search fallback.
 
 ---
 

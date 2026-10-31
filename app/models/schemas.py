@@ -23,6 +23,7 @@ class CitationSource(BaseModel):
     relevance_score: Optional[float] = Field(default=None, description="Similarity or grader score")
 
 class QueryResponse(BaseModel):
+    query_id: str = Field(..., description="Unique query run identifier", examples=["q_a1b2c3d4"])
     question: str = Field(..., description="Original question submitted")
     query_type: str = Field(..., description="Classified query type (conceptual, how-to, troubleshooting, api-reference)")
     answer: str = Field(..., description="Generated answer grounded in documentation with citations")

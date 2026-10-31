@@ -6,7 +6,7 @@ class GraphState(TypedDict):
     """
     Represents the internal state of our LangGraph self-corrective RAG workflow.
     Tracks query progression, retrieved & filtered documents, retry counts,
-    citations, and hallucination flags.
+    citations, conversation history, and hallucination flags.
     """
     question: str                      # Original raw user input
     query_type: str                    # conceptual | how-to | troubleshooting | api-reference
@@ -15,8 +15,9 @@ class GraphState(TypedDict):
     filtered_docs: List[Document]      # Chunks confirmed relevant by Document Grader
     generation: str                    # LLM-generated answer grounded in context
     citations: List[Dict[str, Any]]    # Extracted source citations (file, section, snippet)
-    retry_count: int                   # Current retry attempt counter
+    retry_count: int                   # Current retry attempt counter for query rewrites
     max_retries: int                   # Maximum allowed rewrite loops
     is_fallback: bool                  # Flag indicating web search or insufficient fallback
     is_grounded: bool                  # Hallucination check result (True if grounded)
+    hallucination_retry: int           # Tracks hallucination regeneration attempts (max 1)
     chat_history: List[Dict[str, str]] # Multi-turn conversational history
