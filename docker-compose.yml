@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    container_name: rag-assistant-api
+    ports:
+      - "8000:8000"
+    environment:
+      - LLM_PROVIDER=${LLM_PROVIDER:-groq}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - EMBEDDING_PROVIDER=huggingface
+    volumes:
+      - ./data:/app/data
+
+  ui:
+    build: .
+    container_name: rag-assistant-ui
+    ports:
+      - "8501:8501"
+    command: ["streamlit", "run", "frontend.py", "--server.port=8501", "--server.address=0.0.0.0"]
+    depends_on:
+      - api
+    environment:
+      - API_BASE_URL=http://api:8000
