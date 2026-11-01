@@ -7,10 +7,15 @@ logger = logging.getLogger(__name__)
 def decide_after_grading(state: GraphState) -> str:
     """
     Conditional routing edge following Document Grading:
-    1. If relevant documents exist -> proceed to 'generate'.
-    2. If no relevant documents and retries remain -> route to 'rewrite_query'.
-    3. If no relevant documents and retries exhausted -> route to 'fallback'.
+    1. If query is conversational recall -> proceed directly to 'generate'.
+    2. If relevant documents exist -> proceed to 'generate'.
+    3. If no relevant documents and retries remain -> route to 'rewrite_query'.
+    4. If no relevant documents and retries exhausted -> route to 'fallback'.
     """
+    if state.get("query_type") == "conversation_recall":
+        logger.info("[Edge Router] Query is conversation recall -> routing directly to 'generate'")
+        return "generate"
+
     filtered_docs = state.get("filtered_docs", [])
     retry_count = state.get("retry_count", 0)
     max_retries = state.get("max_retries", settings.MAX_RETRIES)

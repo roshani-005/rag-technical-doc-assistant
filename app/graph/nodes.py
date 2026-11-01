@@ -41,33 +41,50 @@ def query_analysis_node(state: GraphState) -> Dict[str, Any]:
     question = state["question"]
     chat_history = state.get("chat_history", [])
     
+    # Detect if user is asking about the previous conversation
+    q_lower = question.lower()
+    is_recall = bool(
+        chat_history and any(
+            phrase in q_lower for phrase in [
+                "studied above", "discussed above", "we discuss", "we study", "we studied",
+                "what did we", "earlier", "previous answer", "previous question", "summarize what we",
+                "what was my last", "what were we talking"
+            ]
+        )
+    )
+
     system_prompt = (
         "You are an expert technical documentation assistant query analyzer.\n"
-        "Analyze the user question and output a JSON object with two fields:\n"
-        "1. 'query_type': One of ['conceptual', 'how-to', 'troubleshooting', 'api-reference']\n"
-        "2. 'expanded_query': An expanded version of the query enriched with technical keywords, "
-        "synonyms, and framework terms to maximize vector retrieval accuracy.\n\n"
+        "Analyze the user question in the context of recent conversation history.\n"
+        "Output a JSON object with two fields:\n"
+        "1. 'query_type': One of ['conceptual', 'how-to', 'troubleshooting', 'api-reference', 'conversation_recall']\n"
+        "   - Use 'conversation_recall' if the user asks what was discussed or studied earlier in the conversation.\n"
+        "2. 'expanded_query': If the user uses pronouns or references past discussion ('it', 'that', 'these'), "
+        "resolve them into a self-contained technical query. If 'conversation_recall', output a short summary topic.\n\n"
         "Return ONLY the valid JSON object."
     )
     
     history_context = ""
     if chat_history:
         history_context = "\nRecent Conversation:\n" + "\n".join(
-            [f"{m.get('role', 'user')}: {m.get('content', '')}" for m in chat_history[-3:]]
+            [f"{m.get('role', 'user')}: {m.get('content', '')}" for m in chat_history[-4:]]
         )
         
     human_prompt = f"User Question: {question}{history_context}"
     
-    llm = get_chat_model(temperature=0.0, max_tokens=80)
+    llm = get_chat_model(temperature=0.0, max_tokens=100)
     try:
         response = llm.invoke([SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)])
         parsed = _extract_json(response.content)
-        query_type = parsed.get("query_type", "how-to")
+        query_type = parsed.get("query_type", "conversation_recall" if is_recall else "how-to")
         expanded = parsed.get("expanded_query", question)
     except Exception as e:
         logger.warning(f"[Query Analysis] LLM error: {e}. Using raw question.")
-        query_type = "how-to"
+        query_type = "conversation_recall" if is_recall else "how-to"
         expanded = question
+        
+    if is_recall:
+        query_type = "conversation_recall"
     
     logger.info(f"[Query Analysis] Type: {query_type} | Expanded Query: {expanded}")
     
@@ -219,14 +236,57 @@ def generation_node(state: GraphState) -> Dict[str, Any]:
     is_fallback = state.get("is_fallback", False)
     query_type = state.get("query_type", "how-to")
     
-    # If no documents are available even after fallbacks
+    chat_history = list(state.get("chat_history") or [])
+    
+    # 1. Handle conversation recall (asking what was discussed/studied earlier in the session)
+    if query_type == "conversation_recall" or (chat_history and any(
+        phrase in question.lower() for phrase in [
+            "studied above", "discussed above", "we discuss", "we study", "we studied",
+            "what did we", "earlier in our", "previous answer", "previous question", "summarize what we"
+        ]
+    )):
+        history_lines = []
+        for msg in chat_history[-6:]:
+            role = msg.get("role", "user").capitalize()
+            content = msg.get("content", "")
+            history_lines.append(f"{role}: {content}")
+        history_text = "\n\n".join(history_lines)
+        
+        system_prompt = (
+            "You are an AI technical documentation assistant with full memory of this session.\n"
+            "The user is asking what was discussed, studied, or answered earlier in the conversation.\n"
+            "Review the conversation history and clearly summarize the topics and key takeaways.\n"
+            "Be polite, clear, and structure your answer with bullet points."
+        )
+        human_prompt = f"Conversation History:\n{history_text}\n\nUser Question: {question}"
+        
+        llm = get_chat_model(temperature=0.2, max_tokens=350)
+        try:
+            response = llm.invoke([SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)])
+            answer_text = response.content
+        except Exception as e:
+            logger.warning(f"[Generation] Memory recall error: {e}")
+            answer_text = "Earlier in our conversation, we discussed topics from the indexed technical documentation."
+            
+        current_history = list(chat_history)
+        current_history.append({"role": "user", "content": question})
+        current_history.append({"role": "assistant", "content": answer_text})
+        return {
+            "generation": answer_text,
+            "citations": [],
+            "is_fallback": False,
+            "is_grounded": True,
+            "chat_history": current_history
+        }
+
+    # 2. If no documents are available even after fallbacks
     if not docs:
         fallback_msg = (
             "I apologize, but I could not find sufficient information in the provided technical documentation "
-            f"or available web search to answer your question: '{question}'.\n\n"
-            "Please check if the topic is covered in your indexed documents, or try rephrasing your question."
+            f"to answer your question: '{question}'.\n\n"
+            "The indexed documentation covers: **FastAPI Overview, Path & Query Parameters, Request Body & Pydantic, Dependency Injection, and Error Handling**."
         )
-        current_history = list(state.get("chat_history") or [])
+        current_history = list(chat_history)
         current_history.append({"role": "user", "content": question})
         current_history.append({"role": "assistant", "content": fallback_msg})
         return {
@@ -275,7 +335,12 @@ def generation_node(state: GraphState) -> Dict[str, Any]:
         f"5. Tailor the tone to query type: {query_type}.{hallucination_warning}"
     )
     
-    human_prompt = f"User Question: {question}\n\nDocumentation Context:\n{context_str}"
+    history_str = ""
+    if chat_history:
+        history_lines = [f"{m.get('role', 'user').capitalize()}: {m.get('content', '')}" for m in chat_history[-4:]]
+        history_str = "Recent Conversation History (use this to resolve pronouns and follow-up context):\n" + "\n".join(history_lines) + "\n\n"
+        
+    human_prompt = f"{history_str}User Question: {question}\n\nDocumentation Context:\n{context_str}"
     
     llm = get_chat_model(temperature=0.1, max_tokens=350)
     try:

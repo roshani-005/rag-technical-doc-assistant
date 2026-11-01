@@ -43,6 +43,9 @@ class MockChatModel(BaseChatModel):
         # Hallucination check
         elif "hallucination" in last_lower or "grounded" in last_lower:
             response_text = '{"grounded": "yes", "explanation": "Every statement is directly supported by the provided context."}'
+        # Conversation history recall
+        elif "conversation history" in last_lower or "discussed" in last_lower or "studied above" in last_lower:
+            response_text = "Earlier in our conversation, we discussed FastAPI Overview, Path Parameters, and Request Bodies."
         # Generation prompt
         else:
             response_text = (
