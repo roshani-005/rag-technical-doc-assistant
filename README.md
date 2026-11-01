@@ -4,6 +4,7 @@
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110%2B-009688.svg)](https://fastapi.tiangolo.com/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-0.2%2B-orange.svg)](https://langchain-ai.github.io/langgraph/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-Live%20Demo-FF4B4B.svg)](https://roshani-005-rag-technical-doc-assistant-frontend-urymnt.streamlit.app)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ---
@@ -24,6 +25,25 @@ To eliminate these issues, this system implements a **Self-Corrective LangGraph 
 - **Citation Grounding:** Every factual statement references its exact source file and section.
 - **Hallucination Verification (Self-RAG):** Answers undergo an automated groundedness check against retrieved context.
 - **Full API & UI:** Served via an asynchronous **FastAPI** backend with an interactive **Streamlit** user interface and evaluation feedback logging.
+
+---
+
+## 🖥️ Live Demo & User Interface
+
+> 🔗 **Live Streamlit App:** [https://roshani-005-rag-technical-doc-assistant-frontend-urymnt.streamlit.app](https://roshani-005-rag-technical-doc-assistant-frontend-urymnt.streamlit.app)  
+> *Pre-configured with embedded Groq (`qwen/qwen3.8-27b`) and Tavily search engines — no API keys required to test!*
+
+### 1. Interactive Q&A Landing Page
+Clean Technical Green interface featuring quick-start question starters and real-time backend/engine status.
+![Interactive Q&A Landing Page](assets/screenshots/01_ui_overview.png)
+
+### 2. Zero-Hallucination Answers & Verified Citations
+Factual answers generated strictly from retrieved documentation context, complete with explicit section citations and code snippets.
+![Grounded Q&A with Citations](assets/screenshots/02_qa_grounded.png)
+
+### 3. Document Corpus & Dynamic Ingestion
+Inspect currently indexed vector chunks and upload new Markdown files or scrape web documentation on the fly.
+![Document Corpus & Ingestion](assets/screenshots/03_corpus_ingestion.png)
 
 ---
 
