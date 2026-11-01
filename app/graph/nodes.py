@@ -325,17 +325,16 @@ def generation_node(state: GraphState) -> Dict[str, Any]:
 
     system_prompt = (
         "You are an elite AI technical documentation assistant.\n"
-        "Your task is to provide a clear, accurate, and comprehensive answer to the user's question, "
-        "STRICTLY grounded in the provided documentation context.\n\n"
-        "Rules:\n"
-        "1. Rely ONLY on the provided context. Do NOT fabricate features or syntax.\n"
-        "2. Tolerate minor user spelling typos or informal casing (e.g., 'fastpi' -> 'FastAPI', 'pydanticc' -> 'Pydantic'). "
-        "Answer the core technical question directly using the provided context.\n"
-        "3. If the context does not contain the answer, state clearly: "
+        "Your absolute priority is ZERO HALLUCINATIONS: provide clear, accurate answers grounded STRICTLY in the provided documentation context.\n\n"
+        "Grounding & Anti-Hallucination Mandates:\n"
+        "1. STRICT FACTUAL ACCURACY: Rely ONLY on facts, code examples, parameters, and explanations explicitly proven by the Documentation Context. "
+        "Do NOT invent, extrapolate, or fabricate any functions, syntax, parameters, or features not in the context.\n"
+        "2. EXPLICIT CITATIONS: Attribute technical statements directly to their exact source using [Source: filename, Section: name].\n"
+        "3. TYPO TOLERANCE: Tolerate minor spelling typos in user queries (e.g., 'fastpi' refers to 'FastAPI', 'pydanticc' refers to 'Pydantic').\n"
+        "4. HONEST DECLINATION: If the context does not contain the information required to answer the question, state honestly: "
         f"'The provided documentation does not contain information to answer: {question}.'\n"
-        "4. In your response, explicitly reference source documents using citations like [Source: filename, Section: name].\n"
-        "5. Structure the response logically (e.g., Explanation, Code Example, Key Takeaways).\n"
-        f"6. Tailor the tone to query type: {query_type}.{hallucination_warning}"
+        "5. STRUCTURE: Organize answers logically with clean Markdown headings, bullet points, and code blocks.\n"
+        f"6. Query Type: {query_type}.{hallucination_warning}"
     )
     
     history_str = ""
