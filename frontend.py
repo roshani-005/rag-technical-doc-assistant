@@ -4,11 +4,71 @@ Provides interactive Q&A, source citation inspection, dynamic document ingestion
 and one-click answer feedback logging with a Technical Green theme.
 """
 
+import os
+import sys
+import time
+import subprocess
 import streamlit as st
 import httpx
 import uuid
 
-API_BASE_URL = "http://127.0.0.1:8000"
+# Propagate Streamlit Cloud secrets to os.environ so backend and subprocesses inherit them
+try:
+    for k, v in st.secrets.items():
+        if isinstance(v, str) and k not in os.environ:
+            os.environ[k] = v
+except Exception:
+    pass
+
+def get_backend_url() -> str:
+    # 1. Check Streamlit secrets or OS environment
+    url = None
+    try:
+        url = st.secrets.get("API_BASE_URL", None)
+    except Exception:
+        pass
+    if not url:
+        url = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
+    return url.rstrip("/")
+
+API_BASE_URL = get_backend_url()
+
+@st.cache_resource
+def ensure_backend_alive(url: str):
+    """If pointing to localhost and not reachable, automatically launch FastAPI in the background."""
+    if "127.0.0.1" in url or "localhost" in url:
+        try:
+            r = httpx.get(f"{url}/health", timeout=1.0)
+            if r.status_code == 200:
+                return True
+        except Exception:
+            pass
+
+        # Attempt to launch uvicorn in the background
+        kwargs = {}
+        if sys.platform != "win32":
+            kwargs["start_new_session"] = True
+        try:
+            subprocess.Popen(
+                [sys.executable, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                **kwargs
+            )
+            for _ in range(8):
+                time.sleep(1)
+                try:
+                    r = httpx.get(f"{url}/health", timeout=1.0)
+                    if r.status_code == 200:
+                        return True
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    return False
+
+ensure_backend_alive(API_BASE_URL)
+
 
 st.set_page_config(
     page_title="Technical Documentation Assistant",
