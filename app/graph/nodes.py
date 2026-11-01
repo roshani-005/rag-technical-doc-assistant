@@ -59,8 +59,9 @@ def query_analysis_node(state: GraphState) -> Dict[str, Any]:
         "Output a JSON object with two fields:\n"
         "1. 'query_type': One of ['conceptual', 'how-to', 'troubleshooting', 'api-reference', 'conversation_recall']\n"
         "   - Use 'conversation_recall' if the user asks what was discussed or studied earlier in the conversation.\n"
-        "2. 'expanded_query': If the user uses pronouns or references past discussion ('it', 'that', 'these'), "
-        "resolve them into a self-contained technical query. If 'conversation_recall', output a short summary topic.\n\n"
+        "2. 'expanded_query': A self-contained, grammatically corrected search query. "
+        "Correct any obvious technical typos (e.g., 'fastpi' -> 'FastAPI', 'pydanticc' -> 'Pydantic'). "
+        "Resolve any pronouns ('it', 'that', 'these') from recent conversation.\n\n"
         "Return ONLY the valid JSON object."
     )
     
@@ -328,11 +329,13 @@ def generation_node(state: GraphState) -> Dict[str, Any]:
         "STRICTLY grounded in the provided documentation context.\n\n"
         "Rules:\n"
         "1. Rely ONLY on the provided context. Do NOT fabricate features or syntax.\n"
-        "2. If the context does not contain the answer, state clearly: "
+        "2. Tolerate minor user spelling typos or informal casing (e.g., 'fastpi' -> 'FastAPI', 'pydanticc' -> 'Pydantic'). "
+        "Answer the core technical question directly using the provided context.\n"
+        "3. If the context does not contain the answer, state clearly: "
         f"'The provided documentation does not contain information to answer: {question}.'\n"
-        "3. In your response, explicitly reference source documents using citations like [Source: filename, Section: name].\n"
-        "4. Structure the response logically (e.g., Explanation, Code Example, Key Takeaways).\n"
-        f"5. Tailor the tone to query type: {query_type}.{hallucination_warning}"
+        "4. In your response, explicitly reference source documents using citations like [Source: filename, Section: name].\n"
+        "5. Structure the response logically (e.g., Explanation, Code Example, Key Takeaways).\n"
+        f"6. Tailor the tone to query type: {query_type}.{hallucination_warning}"
     )
     
     history_str = ""

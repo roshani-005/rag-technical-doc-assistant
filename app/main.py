@@ -144,6 +144,44 @@ async def query_documentation(request: QueryRequest):
     except Exception as e:
         logger.warning(f"Handled error during query execution: {e}", exc_info=True)
         query_id = f"q_{uuid.uuid4().hex[:8]}"
+
+        # 1. Attempt fallback to Tavily Web Search before returning not-found
+        try:
+            from app.services.search import web_search_fallback
+            web_docs = web_search_fallback(request.question, max_results=3)
+            if web_docs:
+                citations = [
+                    CitationSource(
+                        source=d.metadata.get("source", "Web Search"),
+                        section=d.metadata.get("section", "Web Result"),
+                        snippet=d.page_content[:200]
+                    )
+                    for d in web_docs
+                ]
+                from app.services.llm_factory import get_chat_model
+                from langchain_core.messages import SystemMessage, HumanMessage
+                llm = get_chat_model(temperature=0.2, max_tokens=300)
+                web_ctx = "\n\n".join([f"[{d.metadata.get('source')}]: {d.page_content}" for d in web_docs])
+                prompt = f"Question: {request.question}\n\nWeb Documentation Context:\n{web_ctx}"
+                res = llm.invoke([
+                    SystemMessage(content="You are a helpful technical assistant. Answer the user question accurately based on the provided web documentation."),
+                    HumanMessage(content=prompt)
+                ])
+                return QueryResponse(
+                    query_id=query_id,
+                    question=request.question,
+                    query_type="conceptual",
+                    answer=f"> **[Note]** This topic was answered using external web documentation search.\n\n{res.content}",
+                    sources=citations,
+                    retries_used=1,
+                    is_fallback=True,
+                    is_grounded=True,
+                    thread_id=request.thread_id
+                )
+        except Exception as fallback_err:
+            logger.warning(f"Fallback search also failed: {fallback_err}")
+
+        # 2. Return safe not-found response if web search also could not find information
         err_str = str(e).lower()
         if "rate_limit" in err_str or "429" in err_str or "tokens" in err_str:
             answer_msg = (
