@@ -1,7 +1,7 @@
 """
 Streamlit Web Frontend for RAG Technical Documentation Assistant.
 Provides interactive Q&A, source citation inspection, dynamic document ingestion,
-and one-click answer feedback logging.
+and one-click answer feedback logging with a Technical Green theme.
 """
 
 import streamlit as st
@@ -12,7 +12,7 @@ API_BASE_URL = "http://127.0.0.1:8000"
 
 st.set_page_config(
     page_title="Technical Documentation Assistant",
-    page_icon="🤖",
+    page_icon="📗",
     layout="wide"
 )
 
@@ -22,18 +22,138 @@ if "messages" not in st.session_state:
 if "session_id" not in st.session_state:
     st.session_state.session_id = f"session_{uuid.uuid4().hex[:6]}"
 
-st.title("📚 Technical Documentation Assistant")
-st.caption("Powered by LangGraph Self-Corrective RAG & FastAPI")
+# Inject Technical Green Theme CSS
+st.markdown("""
+<style>
+/* Technical Green Palette */
+:root {
+    --tech-green: #10B981;
+    --tech-green-dark: #059669;
+    --tech-green-light: #34D399;
+    --tech-green-bg: rgba(16, 185, 129, 0.08);
+    --tech-border: rgba(16, 185, 129, 0.35);
+}
+
+/* Header Banner */
+.tech-banner {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(6, 78, 59, 0.05) 100%);
+    border: 1px solid var(--tech-border);
+    border-left: 6px solid var(--tech-green);
+    padding: 16px 24px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 16px rgba(16, 185, 129, 0.08);
+}
+
+.tech-banner h1 {
+    color: #10B981 !important;
+    font-size: 2.1rem;
+    font-weight: 800;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    letter-spacing: -0.5px;
+}
+
+.tech-banner p {
+    color: #94A3B8;
+    font-size: 0.95rem;
+    margin: 6px 0 0 0;
+    font-weight: 500;
+}
+
+/* Technical Green Badges */
+.tech-pill {
+    display: inline-block;
+    padding: 4px 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    border-radius: 20px;
+    background: rgba(16, 185, 129, 0.15);
+    color: #10B981;
+    border: 1px solid rgba(16, 185, 129, 0.4);
+    margin-right: 6px;
+}
+
+.tech-pill-gray {
+    display: inline-block;
+    padding: 4px 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    border-radius: 20px;
+    background: rgba(148, 163, 184, 0.12);
+    color: #94A3B8;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    margin-right: 6px;
+}
+
+/* Glowing green status dot */
+.pulse-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    background-color: #10B981;
+    border-radius: 50%;
+    margin-right: 8px;
+    box-shadow: 0 0 10px #10B981;
+}
+
+/* Sidebar Styling */
+section[data-testid="stSidebar"] {
+    border-right: 1px solid var(--tech-border);
+}
+
+/* Buttons */
+.stButton > button {
+    border: 1px solid var(--tech-border) !important;
+    border-radius: 8px !important;
+    transition: all 0.2s ease-in-out !important;
+}
+
+.stButton > button:hover {
+    border-color: var(--tech-green) !important;
+    color: var(--tech-green) !important;
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.25) !important;
+}
+
+/* Tab Highlights */
+.stTabs [data-baseweb="tab"][aria-selected="true"] {
+    color: var(--tech-green) !important;
+    border-bottom-color: var(--tech-green) !important;
+}
+
+/* Expander custom border */
+.streamlit-expanderHeader {
+    border-left: 3px solid var(--tech-green) !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# Main Banner Header
+st.markdown("""
+<div class="tech-banner">
+    <h1>📗 ⚡ Technical Documentation Assistant</h1>
+    <p>Self-Corrective LangGraph Architecture with CRAG, Citation Grounding & FastAPI</p>
+</div>
+""", unsafe_allow_html=True)
 
 # Sidebar - System Info and Settings
 with st.sidebar:
-    st.header("⚙️ System Status")
+    st.markdown("### ⚙️ Engine Console")
     try:
         health_resp = httpx.get(f"{API_BASE_URL}/health", timeout=3.0)
         if health_resp.status_code == 200:
             health_data = health_resp.json()
-            st.success("Backend API: Online")
-            st.metric("Indexed Chunks", health_data.get("indexed_chunks", 0))
+            st.markdown(
+                '<p style="color:#10B981; font-weight:600;"><span class="pulse-dot"></span>Backend API: Online</p>',
+                unsafe_allow_html=True
+            )
+            col_m1, col_m2 = st.columns(2)
+            with col_m1:
+                st.metric("Indexed Chunks", health_data.get("indexed_chunks", 0))
+            with col_m2:
+                st.metric("Version", health_data.get("version", "1.0"))
             st.info(f"LLM Provider: **{health_data.get('llm_provider', 'N/A').upper()}**")
         else:
             st.warning("Backend API responded with non-200 code.")
@@ -42,7 +162,7 @@ with st.sidebar:
         
     st.divider()
     st.write(f"**Session ID:** `{st.session_state.session_id}`")
-    if st.button("Clear Chat History"):
+    if st.button("🗑️ Clear Session Memory", use_container_width=True):
         st.session_state.messages = []
         st.session_state.session_id = f"session_{uuid.uuid4().hex[:6]}"
         st.rerun()
@@ -54,20 +174,43 @@ tab_chat, tab_docs, tab_workflow = st.tabs(["💬 Interactive Q&A", "📄 Docume
 # TAB 1: Interactive Q&A Chat
 # -------------------------------------------------------------
 with tab_chat:
+    # Quick Starter Questions (shown when conversation is empty)
+    if not st.session_state.messages:
+        st.markdown("##### 💡 Example Questions (Click to Ask)")
+        q_cols = st.columns(2)
+        starters = [
+            "⚡ How do path parameters work in FastAPI?",
+            "🛡️ How do I validate request bodies with Pydantic?",
+            "🔌 How does Dependency Injection work in FastAPI?",
+            "⚠️ How do I handle HTTP errors and status codes?"
+        ]
+        for idx, starter in enumerate(starters):
+            col = q_cols[idx % 2]
+            with col:
+                if st.button(starter, key=f"starter_{idx}", use_container_width=True):
+                    # Clean out icon prefix for cleaner question
+                    clean_q = starter.split(" ", 1)[1] if " " in starter else starter
+                    st.session_state.starter_selected = clean_q
+                    st.rerun()
+
+    # Display Conversation Messages
     for idx, msg in enumerate(st.session_state.messages):
-        with st.chat_message(msg["role"]):
+        with st.chat_message(msg["role"], avatar="👤" if msg["role"] == "user" else "📗"):
             st.markdown(msg["content"])
             
             # Show metadata and citations for assistant messages
             if msg["role"] == "assistant":
                 col1, col2, col3 = st.columns([2, 2, 3])
                 with col1:
-                    st.caption(f"🏷️ Intent: **{msg.get('query_type', 'N/A')}**")
+                    st.markdown(f'<span class="tech-pill">🏷️ {msg.get("query_type", "how-to").upper()}</span>', unsafe_allow_html=True)
                 with col2:
-                    st.caption(f"🔄 Retries: **{msg.get('retries_used', 0)}**")
+                    retries = msg.get("retries_used", 0)
+                    st.markdown(f'<span class="tech-pill-gray">🔄 Retries: {retries}</span>', unsafe_allow_html=True)
                 with col3:
-                    grounded_icon = "✅ Grounded" if msg.get("is_grounded", True) else "⚠️ Verification Warning"
-                    st.caption(f"🛡️ {grounded_icon}")
+                    if msg.get("is_grounded", True):
+                        st.markdown('<span class="tech-pill">🛡️ ✅ Grounded</span>', unsafe_allow_html=True)
+                    else:
+                        st.markdown('<span class="tech-pill-gray">⚠️ Unverified</span>', unsafe_allow_html=True)
                     
                 sources = msg.get("sources", [])
                 if sources:
@@ -103,20 +246,27 @@ with tab_chat:
                         except Exception as e:
                             st.toast(f"Feedback failed: {e}")
 
+    # Handle starter button click if present
+    prefilled_query = None
+    if "starter_selected" in st.session_state:
+        prefilled_query = st.session_state.pop("starter_selected")
+
     # Chat Input Box
     user_query = st.chat_input("Ask a technical documentation question (e.g., 'How do path parameters work in FastAPI?')...")
-    if user_query:
+    active_query = prefilled_query or user_query
+
+    if active_query:
         # Display user message immediately
-        st.session_state.messages.append({"role": "user", "content": user_query})
-        with st.chat_message("user"):
-            st.markdown(user_query)
+        st.session_state.messages.append({"role": "user", "content": active_query})
+        with st.chat_message("user", avatar="👤"):
+            st.markdown(active_query)
 
         # Call FastAPI backend
-        with st.chat_message("assistant"):
+        with st.chat_message("assistant", avatar="📗"):
             with st.spinner("Analyzing query, retrieving documents, and self-correcting..."):
                 try:
                     payload = {
-                        "question": user_query,
+                        "question": active_query,
                         "thread_id": st.session_state.session_id
                     }
                     response = httpx.post(f"{API_BASE_URL}/query", json=payload, timeout=60.0)
@@ -135,7 +285,7 @@ with tab_chat:
                         st.session_state.messages.append({
                             "role": "assistant",
                             "content": answer,
-                            "question": user_query,
+                            "question": active_query,
                             "query_id": query_id,
                             "query_type": query_type,
                             "sources": sources,
@@ -157,7 +307,12 @@ with tab_docs:
         docs_resp = httpx.get(f"{API_BASE_URL}/documents", timeout=5.0)
         if docs_resp.status_code == 200:
             doc_data = docs_resp.json()
-            st.write(f"Total Indexed Documents: **{doc_data['total_documents']}** | Total Chunks: **{doc_data['total_chunks']}**")
+            st.markdown(
+                f'<span class="tech-pill">📄 Total Documents: {doc_data["total_documents"]}</span>'
+                f'<span class="tech-pill">🧩 Total Chunks: {doc_data["total_chunks"]}</span>',
+                unsafe_allow_html=True
+            )
+            st.write("")
             
             for d in doc_data.get("documents", []):
                 with st.expander(f"📄 {d['source']} ({d['chunk_count']} chunks)"):
