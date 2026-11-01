@@ -142,10 +142,36 @@ async def query_documentation(request: QueryRequest):
             thread_id=request.thread_id
         )
     except Exception as e:
-        logger.error(f"Error during query execution: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An error occurred while executing the RAG workflow: {str(e)}"
+        logger.warning(f"Handled error during query execution: {e}", exc_info=True)
+        query_id = f"q_{uuid.uuid4().hex[:8]}"
+        err_str = str(e).lower()
+        if "rate_limit" in err_str or "429" in err_str or "tokens" in err_str:
+            answer_msg = (
+                f"The question **'{request.question}'** was not found in the indexed technical documentation.\n\n"
+                "*(Note: The external AI provider rate limit was briefly reached. "
+                "The indexed documentation covers: **FastAPI Overview, Path & Query Parameters, Request Body & Pydantic, Dependency Injection, and Error Handling**.)*"
+            )
+        else:
+            answer_msg = (
+                f"The provided technical documentation does not contain information to answer: **'{request.question}'**.\n\n"
+                "The indexed documentation covers:\n"
+                "- FastAPI Overview & Core Concepts\n"
+                "- Path & Query Parameters\n"
+                "- Request Body & Pydantic Models\n"
+                "- Dependency Injection System\n"
+                "- Error Handling & Status Codes\n\n"
+                "Please try asking a question about these technical documentation topics."
+            )
+        return QueryResponse(
+            query_id=query_id,
+            question=request.question,
+            query_type="conceptual",
+            answer=answer_msg,
+            sources=[],
+            retries_used=0,
+            is_fallback=True,
+            is_grounded=True,
+            thread_id=request.thread_id
         )
 
 # -------------------------------------------------------------

@@ -62,7 +62,7 @@ class MockChatModel(BaseChatModel):
     def _llm_type(self) -> str:
         return "mock"
 
-def get_chat_model(temperature: float = 0.0) -> BaseChatModel:
+def get_chat_model(temperature: float = 0.0, max_tokens: Optional[int] = None) -> BaseChatModel:
     """
     Factory function returning the configured ChatModel.
     Supports Groq, OpenAI, Google Gemini, and MockChatModel.
@@ -86,6 +86,7 @@ def get_chat_model(temperature: float = 0.0) -> BaseChatModel:
                 model_name=settings.GROQ_MODEL,
                 groq_api_key=api_key,
                 temperature=temperature,
+                max_tokens=max_tokens or 400,
             )
         except Exception as e:
             logger.error(f"Failed to initialize ChatGroq: {e}")

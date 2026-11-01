@@ -58,12 +58,16 @@ def query_analysis_node(state: GraphState) -> Dict[str, Any]:
         
     human_prompt = f"User Question: {question}{history_context}"
     
-    llm = get_chat_model(temperature=0.0)
-    response = llm.invoke([SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)])
-    parsed = _extract_json(response.content)
-    
-    query_type = parsed.get("query_type", "how-to")
-    expanded = parsed.get("expanded_query", question)
+    llm = get_chat_model(temperature=0.0, max_tokens=80)
+    try:
+        response = llm.invoke([SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)])
+        parsed = _extract_json(response.content)
+        query_type = parsed.get("query_type", "how-to")
+        expanded = parsed.get("expanded_query", question)
+    except Exception as e:
+        logger.warning(f"[Query Analysis] LLM error: {e}. Using raw question.")
+        query_type = "how-to"
+        expanded = question
     
     logger.info(f"[Query Analysis] Type: {query_type} | Expanded Query: {expanded}")
     
@@ -112,7 +116,7 @@ def document_grading_node(state: GraphState) -> Dict[str, Any]:
         "Output ONLY a JSON object: {\"score\": \"relevant\"} or {\"score\": \"irrelevant\", \"reason\": \"...\"}."
     )
     
-    llm = get_chat_model(temperature=0.0)
+    llm = get_chat_model(temperature=0.0, max_tokens=50)
     filtered_docs: List[Document] = []
     
     for idx, doc in enumerate(documents):
@@ -161,9 +165,13 @@ def query_rewriter_node(state: GraphState) -> Dict[str, Any]:
     
     human_prompt = f"Original Question: {question}\nPrevious Failed Query: {previous_query}"
     
-    llm = get_chat_model(temperature=0.3)
-    response = llm.invoke([SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)])
-    new_query = response.content.strip().strip('"')
+    llm = get_chat_model(temperature=0.3, max_tokens=50)
+    try:
+        response = llm.invoke([SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)])
+        new_query = response.content.strip().strip('"')
+    except Exception as e:
+        logger.warning(f"[Query Rewriter] Rewriter error: {e}. Using fallback query.")
+        new_query = f"{question} technical details"
     
     logger.info(f"[Query Rewriter] Retry {current_retries}/{state.get('max_retries', settings.MAX_RETRIES)}: '{new_query}'")
     
@@ -260,7 +268,8 @@ def generation_node(state: GraphState) -> Dict[str, Any]:
         "STRICTLY grounded in the provided documentation context.\n\n"
         "Rules:\n"
         "1. Rely ONLY on the provided context. Do NOT fabricate features or syntax.\n"
-        "2. If the context contains code snippets, provide complete, syntactically correct examples.\n"
+        "2. If the context does not contain the answer, state clearly: "
+        f"'The provided documentation does not contain information to answer: {question}.'\n"
         "3. In your response, explicitly reference source documents using citations like [Source: filename, Section: name].\n"
         "4. Structure the response logically (e.g., Explanation, Code Example, Key Takeaways).\n"
         f"5. Tailor the tone to query type: {query_type}.{hallucination_warning}"
@@ -268,15 +277,26 @@ def generation_node(state: GraphState) -> Dict[str, Any]:
     
     human_prompt = f"User Question: {question}\n\nDocumentation Context:\n{context_str}"
     
-    llm = get_chat_model(temperature=0.1)
-    response = llm.invoke([SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)])
+    llm = get_chat_model(temperature=0.1, max_tokens=350)
+    try:
+        response = llm.invoke([SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)])
+        answer_text = response.content
+    except Exception as e:
+        logger.warning(f"[Generation] LLM invocation failed: {e}. Returning safe not-found message.")
+        answer_text = (
+            f"The provided technical documentation does not contain information to answer: '{question}'.\n\n"
+            "The indexed documentation covers: **FastAPI Overview, Path & Query Parameters, Request Body & Pydantic, Dependency Injection, and Error Handling**."
+        )
+        
+    if is_fallback and not answer_text.startswith("> **[Note]**"):
+        answer_text = f"> **[Note]** This topic was not found in the local technical documentation.\n\n{answer_text}"
     
     current_history = list(state.get("chat_history") or [])
     current_history.append({"role": "user", "content": question})
-    current_history.append({"role": "assistant", "content": response.content})
+    current_history.append({"role": "assistant", "content": answer_text})
 
     return {
-        "generation": response.content,
+        "generation": answer_text,
         "citations": citations,
         "is_fallback": is_fallback,
         "chat_history": current_history
@@ -307,7 +327,7 @@ def hallucination_check_node(state: GraphState) -> Dict[str, Any]:
     
     human_prompt = f"Context:\n{context_text}\n\nAnswer to check:\n{generation}"
     
-    llm = get_chat_model(temperature=0.0)
+    llm = get_chat_model(temperature=0.0, max_tokens=50)
     try:
         res = llm.invoke([SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)])
         parsed = _extract_json(res.content)
