@@ -12,21 +12,38 @@ import streamlit as st
 import httpx
 import uuid
 
-# Propagate Streamlit Cloud secrets to os.environ so backend and subprocesses inherit them
-try:
-    for k, v in st.secrets.items():
-        if isinstance(v, str) and k not in os.environ:
-            os.environ[k] = v
-except Exception:
-    pass
+st.set_page_config(
+    page_title="Technical Documentation Assistant",
+    page_icon="📗",
+    layout="wide"
+)
 
-def get_backend_url() -> str:
-    # 1. Check Streamlit secrets or OS environment
-    url = None
+from pathlib import Path
+
+# Safe check before accessing st.secrets to eliminate "No secrets files found" banner
+has_secrets = (
+    Path(".streamlit/secrets.toml").exists()
+    or (Path.home() / ".streamlit" / "secrets.toml").exists()
+    or "STREAMLIT_SHARING" in os.environ
+    or "STREAMLIT_SERVER_PORT" in os.environ
+)
+
+if has_secrets:
     try:
-        url = st.secrets.get("API_BASE_URL", None)
+        for k, v in st.secrets.items():
+            if isinstance(v, str) and k not in os.environ:
+                os.environ[k] = v
     except Exception:
         pass
+
+def get_backend_url() -> str:
+    url = None
+    if has_secrets:
+        try:
+            if "API_BASE_URL" in st.secrets:
+                url = st.secrets["API_BASE_URL"]
+        except Exception:
+            pass
     if not url:
         url = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
     return url.rstrip("/")
@@ -68,13 +85,6 @@ def ensure_backend_alive(url: str):
     return False
 
 ensure_backend_alive(API_BASE_URL)
-
-
-st.set_page_config(
-    page_title="Technical Documentation Assistant",
-    page_icon="📗",
-    layout="wide"
-)
 
 # Initialize session states
 if "messages" not in st.session_state:
