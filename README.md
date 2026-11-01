@@ -30,9 +30,6 @@ To eliminate these issues, this system implements a **Self-Corrective LangGraph 
 
 ## 🖥️ Live Demo & User Interface
 
-> 🔗 **Live Streamlit App:** [https://roshani-005-rag-technical-doc-assistant-frontend-urymnt.streamlit.app](https://roshani-005-rag-technical-doc-assistant-frontend-urymnt.streamlit.app)  
-> *Pre-configured with embedded Groq (`qwen/qwen3.8-27b`) and Tavily search engines — no API keys required to test!*
-
 ### 1. Interactive Q&A Landing Page
 Clean Technical Green interface featuring quick-start question starters and real-time backend/engine status.
 ![Interactive Q&A Landing Page](assets/screenshots/01_ui_overview.png)
