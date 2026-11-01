@@ -221,6 +221,28 @@ with st.sidebar:
         st.error("Backend API is unreachable at http://127.0.0.1:8000. Start the FastAPI server!")
         
     st.divider()
+    with st.expander("🔑 API Credentials", expanded=not bool(os.getenv("GROQ_API_KEY"))):
+        groq_key_input = st.text_input(
+            "Groq API Key", 
+            value=os.getenv("GROQ_API_KEY", ""), 
+            type="password",
+            help="Your Groq API Key (starts with gsk_)"
+        )
+        tavily_key_input = st.text_input(
+            "Tavily API Key (Optional)", 
+            value=os.getenv("TAVILY_API_KEY", ""), 
+            type="password",
+            help="Your Tavily API Key (starts with tvly-)"
+        )
+        if groq_key_input and groq_key_input != os.getenv("GROQ_API_KEY"):
+            os.environ["GROQ_API_KEY"] = groq_key_input
+            st.success("Groq API Key saved!")
+            st.rerun()
+        if tavily_key_input and tavily_key_input != os.getenv("TAVILY_API_KEY"):
+            os.environ["TAVILY_API_KEY"] = tavily_key_input
+            st.success("Tavily API Key saved!")
+            st.rerun()
+
     st.write(f"**Session ID:** `{st.session_state.session_id}`")
     if st.button("🗑️ Clear Session Memory", use_container_width=True):
         st.session_state.messages = []
@@ -327,7 +349,9 @@ with tab_chat:
                 try:
                     payload = {
                         "question": active_query,
-                        "thread_id": st.session_state.session_id
+                        "thread_id": st.session_state.session_id,
+                        "groq_api_key": os.getenv("GROQ_API_KEY", ""),
+                        "tavily_api_key": os.getenv("TAVILY_API_KEY", "")
                     }
                     response = httpx.post(f"{API_BASE_URL}/query", json=payload, timeout=60.0)
                     

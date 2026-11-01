@@ -15,6 +15,14 @@ class QueryRequest(BaseModel):
         description="Optional session / thread ID for multi-turn conversation memory.",
         examples=["session-user-123"]
     )
+    groq_api_key: Optional[str] = Field(
+        default=None,
+        description="Optional runtime Groq API key."
+    )
+    tavily_api_key: Optional[str] = Field(
+        default=None,
+        description="Optional runtime Tavily API key."
+    )
 
 class CitationSource(BaseModel):
     source: str = Field(..., description="Document filename or URL", examples=["path_and_query_parameters.md"])

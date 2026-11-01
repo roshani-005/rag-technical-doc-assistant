@@ -114,6 +114,13 @@ async def query_documentation(request: QueryRequest):
             detail="The 'question' field cannot be blank."
         )
         
+    if request.groq_api_key:
+        settings.GROQ_API_KEY = request.groq_api_key
+        os.environ["GROQ_API_KEY"] = request.groq_api_key
+    if request.tavily_api_key:
+        settings.TAVILY_API_KEY = request.tavily_api_key
+        os.environ["TAVILY_API_KEY"] = request.tavily_api_key
+
     try:
         final_state = await run_documentation_assistant(
             question=request.question,
@@ -183,7 +190,22 @@ async def query_documentation(request: QueryRequest):
 
         # 2. Return safe not-found response if web search also could not find information
         err_str = str(e).lower()
-        if "rate_limit" in err_str or "429" in err_str or "tokens" in err_str:
+        if "missing" in err_str or "groq_api_key" in err_str or "api key" in err_str:
+            answer_msg = (
+                "⚠️ **Groq API Key Not Configured on Server**\n\n"
+                "The `GROQ_API_KEY` was not found in your Streamlit Cloud Secrets or server environment.\n\n"
+                "**How to fix:**\n"
+                "1. On Streamlit Community Cloud, click **Settings** (or `...` at the bottom right) ➔ **Secrets**.\n"
+                "2. Paste your keys:\n"
+                "```toml\n"
+                "GROQ_API_KEY = \"gsk_...\"\n"
+                "TAVILY_API_KEY = \"tvly-dev-...\"\n"
+                "LLM_PROVIDER = \"groq\"\n"
+                "GROQ_MODEL = \"qwen/qwen3.8-27b\"\n"
+                "```\n"
+                "3. Or enter your key directly in the left sidebar **API Credentials** expander!"
+            )
+        elif "rate_limit" in err_str or "429" in err_str or "tokens" in err_str:
             answer_msg = (
                 f"The question **'{request.question}'** was not found in the indexed technical documentation.\n\n"
                 "*(Note: The external AI provider rate limit was briefly reached. "
